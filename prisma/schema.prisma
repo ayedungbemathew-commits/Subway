@@ -1,0 +1,321 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+  REFUND
+  REVERSAL
+  ADJUSTMENT
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum NetworkStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProviderStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum DataPlanStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TransactionType {
+  AIRTIME
+  DATA
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  MANUAL
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  ABANDONED
+  REVERSED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  SUPPORT
+}
+
+enum AdminStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  email        String     @unique @db.VarChar(191)
+  phone        String?    @unique @db.VarChar(191)
+  name         String?    @db.VarChar(191)
+  passwordHash String?    @db.VarChar(191)
+  role         UserRole   @default(USER)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  wallet            Wallet?
+  transactions      Transaction[]
+  payments          Payment[]
+  adminAuditLogs    AdminAuditLog[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([status])
+  @@map("users")
+}
+
+model Wallet {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  balance   Decimal  @default(0.00) @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            Int                      @id @default(autoincrement())
+  walletId      Int
+  type          WalletTransactionType
+  status        WalletTransactionStatus @default(PENDING)
+  amount        Decimal                  @db.Decimal(18, 2)
+  balanceBefore Decimal                  @db.Decimal(18, 2)
+  balanceAfter  Decimal                  @db.Decimal(18, 2)
+  reference     String                   @unique @db.VarChar(191)
+  description   String?                  @db.VarChar(191)
+  transactionId Int?                     @unique
+  paymentId     Int?                     @unique
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  wallet      Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  payment     Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+model Network {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique @db.VarChar(191)
+  code      String        @unique @db.VarChar(191)
+  status    NetworkStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  dataPlans    DataPlan[]
+  transactions Transaction[]
+
+  @@map("networks")
+}
+
+model Provider {
+  id        Int            @id @default(autoincrement())
+  name      String         @unique @db.VarChar(191)
+  code      String         @unique @db.VarChar(191)
+  baseUrl   String?        @db.VarChar(191)
+  status    ProviderStatus @default(ACTIVE)
+  priority  Int            @default(1)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  dataPlans    DataPlan[]
+  transactions Transaction[]
+
+  @@index([status])
+  @@index([priority])
+  @@map("providers")
+}
+
+model DataPlan {
+  id             Int           @id @default(autoincrement())
+  networkId      Int
+  providerId     Int?
+  providerPlanId String?       @db.VarChar(191)
+  name           String        @db.VarChar(191)
+  dataAmount     String        @db.VarChar(191)
+  validity       String?       @db.VarChar(191)
+  providerCost   Decimal       @db.Decimal(18, 2)
+  sellingPrice   Decimal       @db.Decimal(18, 2)
+  status         DataPlanStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  network   Network   @relation(fields: [networkId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  provider  Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  transactions Transaction[]
+
+  @@index([networkId])
+  @@index([providerId])
+  @@index([status])
+  @@unique([networkId, providerId, providerPlanId])
+  @@map("data_plans")
+}
+
+model Transaction {
+  id                Int               @id @default(autoincrement())
+  userId            Int
+  networkId         Int
+  providerId        Int?
+  dataPlanId        Int?
+  reference         String            @unique @db.VarChar(191)
+  providerReference String?           @db.VarChar(191)
+  type              TransactionType
+  status            TransactionStatus @default(PENDING)
+  phoneNumber       String            @db.VarChar(191)
+  amount            Decimal           @db.Decimal(18, 2)
+  providerCost      Decimal           @default(0.00) @db.Decimal(18, 2)
+  profit            Decimal           @default(0.00) @db.Decimal(18, 2)
+  providerResponse  Json?
+  failureReason    String?           @db.VarChar(191)
+  refunded         Boolean           @default(false)
+  refundedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  user             User                @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  network          Network             @relation(fields: [networkId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  provider         Provider?           @relation(fields: [providerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  dataPlan         DataPlan?           @relation(fields: [dataPlanId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  walletTransaction WalletTransaction?
+
+  @@index([userId])
+  @@index([networkId])
+  @@index([providerId])
+  @@index([status])
+  @@index([type])
+  @@index([phoneNumber])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+model Payment {
+  id                Int            @id @default(autoincrement())
+  userId            Int
+  reference         String         @unique @db.VarChar(191)
+  providerReference String?        @db.VarChar(191)
+  provider          PaymentProvider @default(PAYSTACK)
+  status            PaymentStatus   @default(PENDING)
+  amount            Decimal        @db.Decimal(18, 2)
+  fee               Decimal        @default(0.00) @db.Decimal(18, 2)
+  channel           String?        @db.VarChar(191)
+  providerResponse  Json?
+  paidAt            DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  walletTransaction WalletTransaction?
+
+  @@index([userId])
+  @@index([status])
+  @@index([provider])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+model AdminAuditLog {
+  id          Int      @id @default(autoincrement())
+  actorId     Int?
+  action      String   @db.VarChar(191)
+  entity      String?  @db.VarChar(191)
+  entityId    String?  @db.VarChar(191)
+  description String?  @db.VarChar(191)
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?  @db.VarChar(191)
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
+}
+
+model AdminUser {
+  id           Int         @id @default(autoincrement())
+  fullName     String      @db.VarChar(191)
+  email        String      @unique @db.VarChar(191)
+  passwordHash String      @db.VarChar(191)
+  role         AdminRole   @default(SUPPORT)
+  status       AdminStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@index([role])
+  @@index([status])
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  adminId     Int?
+  action      String   @db.VarChar(191)
+  description String?  @db.Text
+  ipAddress   String?  @db.VarChar(45)
+  createdAt   DateTime @default(now())
+
+  admin AdminUser? @relation(fields: [adminId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,23 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.bak
+audit-run-*.txt
+audit-output.txt
+audit-failure-*.json
+# AI tool folders
+.agents/
+.claude/
+.cursor/
+.devin/
+# one-off diagnostics and leftovers
+debug-*.js
+check-*.js
+inspect-*.js
+restore-payment-audit-*.js
+cleanup-payment-audit-records.js
+deep-vtu-audit-output.txt
+packageme.json
+*.corrupted-backup
+/src */

@@ -1,0 +1,491 @@
+const { PrismaClient, Prisma } = require("@prisma/client");
+const MockProvider = require("../providers/mockProvider");
+
+const prisma = new PrismaClient();
+
+function money(amount) {
+  try {
+    return new Prisma.Decimal(amount);
+  } catch (error) {
+    throw new Error("Invalid monetary amount.");
+  }
+}
+
+function validateAmount(amount) {
+  const value = money(amount);
+
+  if (!value.isFinite() || value.lte(0)) {
+    throw new Error("Amount must be greater than zero.");
+  }
+
+  return value;
+}
+
+function validatePhoneNumber(phoneNumber) {
+  if (!phoneNumber || typeof phoneNumber !== "string") {
+    throw new Error("A valid phone number is required.");
+  }
+
+  const normalized = phoneNumber.replace(/\s+/g, "");
+
+  if (!/^0\d{10}$/.test(normalized)) {
+    throw new Error(
+      "Phone number must be a valid Nigerian 11-digit number."
+    );
+  }
+
+  return normalized;
+}
+
+function validateReference(reference) {
+  if (!reference || typeof reference !== "string") {
+    throw new Error("A valid transaction reference is required.");
+  }
+
+  const normalized = reference.trim();
+
+  if (!normalized) {
+    throw new Error("A valid transaction reference is required.");
+  }
+
+  return normalized;
+}
+
+async function validateUser(userId) {
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new Error("Invalid user ID.");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found.");
+  }
+
+  if (user.status !== "ACTIVE") {
+    throw new Error("User account is not active.");
+  }
+
+  return user;
+}
+
+async function getActiveNetwork(networkCode) {
+  if (!networkCode || typeof networkCode !== "string") {
+    throw new Error("Network code is required.");
+  }
+
+  const network = await prisma.network.findFirst({
+    where: {
+      code: networkCode.trim().toUpperCase(),
+      status: "ACTIVE",
+    },
+  });
+
+  if (!network) {
+    throw new Error("Network not found or inactive.");
+  }
+
+  return network;
+}
+
+async function getActiveProvider() {
+  const provider = await prisma.provider.findFirst({
+    where: {
+      status: "ACTIVE",
+    },
+    orderBy: {
+      priority: "asc",
+    },
+  });
+
+  if (!provider) {
+    throw new Error("No active VTU provider is available.");
+  }
+
+  return provider;
+}
+
+function createProviderAdapter(provider) {
+  const mode = (process.env.MOCK_PROVIDER_MODE || "SUCCESS").toUpperCase();
+
+  return new MockProvider({
+    mode,
+    providerId: provider.id,
+  });
+}
+async function createPendingTransaction({
+  userId,
+  networkId,
+  providerId,
+  reference,
+  phoneNumber,
+  amount,
+  type,
+  dataPlanId = null,
+  providerCost = "0.00",
+}) {
+  return prisma.transaction.create({
+    data: {
+      userId,
+      networkId,
+      providerId,
+      dataPlanId,
+      reference,
+      type,
+      status: "PENDING",
+      phoneNumber,
+      amount,
+      providerCost: money(providerCost),
+      profit: money("0.00"),
+    },
+  });
+}
+
+async function markTransactionFailed(transactionId, providerResult) {
+  return prisma.transaction.update({
+    where: {
+      id: transactionId,
+    },
+    data: {
+      status: "FAILED",
+      providerReference: providerResult.providerReference || null,
+      providerResponse: providerResult.providerResponse || null,
+      failureReason:
+        providerResult.failureReason ||
+        "Provider failed to process the transaction.",
+    },
+  });
+}
+
+async function markTransactionPending(transactionId, providerResult) {
+  return prisma.transaction.update({
+    where: {
+      id: transactionId,
+    },
+    data: {
+      status: "PROCESSING",
+      providerReference: providerResult.providerReference || null,
+      providerResponse: providerResult.providerResponse || null,
+    },
+  });
+}
+
+async function completeSuccessfulTransaction(
+  transactionId,
+  providerResult
+) {
+  return prisma.$transaction(
+    async (tx) => {
+      const transaction = await tx.transaction.findUnique({
+        where: {
+          id: transactionId,
+        },
+      });
+
+      if (!transaction) {
+        throw new Error("VTU transaction not found.");
+      }
+
+      if (transaction.status === "SUCCESS") {
+        return transaction;
+      }
+
+      if (
+        transaction.status === "FAILED" ||
+        transaction.status === "REVERSED"
+      ) {
+        throw new Error(
+          "Transaction cannot be completed because its current status is " +
+            transaction.status +
+            "."
+        );
+      }
+
+      const wallet = await tx.wallet.findUnique({
+        where: {
+          userId: transaction.userId,
+        },
+      });
+
+      if (!wallet) {
+        throw new Error("Wallet not found.");
+      }
+
+      if (wallet.balance.lt(transaction.amount)) {
+        throw new Error(
+          "Provider succeeded, but the wallet has insufficient funds."
+        );
+      }
+
+      const balanceBefore = wallet.balance;
+      const balanceAfter = balanceBefore.minus(transaction.amount);
+
+      await tx.wallet.update({
+        where: {
+          id: wallet.id,
+        },
+        data: {
+          balance: balanceAfter,
+        },
+      });
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: "DEBIT",
+          status: "SUCCESS",
+          amount: transaction.amount,
+          balanceBefore,
+          balanceAfter,
+          reference: "VTU-DEBIT-" + transaction.id,
+          description:
+            transaction.type === "AIRTIME"
+              ? "Airtime purchase for " + transaction.phoneNumber
+              : "Data purchase for " + transaction.phoneNumber,
+          transactionId: transaction.id,
+        },
+      });
+
+      const providerCost = providerResult.providerCost
+        ? money(providerResult.providerCost)
+        : money(transaction.providerCost);
+
+      const profit = transaction.amount.minus(providerCost);
+
+      return tx.transaction.update({
+        where: {
+          id: transaction.id,
+        },
+        data: {
+          status: "SUCCESS",
+          providerReference:
+            providerResult.providerReference || null,
+          providerResponse:
+            providerResult.providerResponse || null,
+          providerCost,
+          profit,
+          failureReason: null,
+        },
+      });
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    }
+  );
+}
+
+async function findExistingTransaction(reference) {
+  return prisma.transaction.findUnique({
+    where: {
+      reference,
+    },
+  });
+}
+
+async function purchaseAirtime({
+  userId,
+  networkCode,
+  phoneNumber,
+  amount,
+  reference,
+}) {
+  const validatedUser = await validateUser(userId);
+  const network = await getActiveNetwork(networkCode);
+  const provider = await getActiveProvider();
+
+  const normalizedPhone = validatePhoneNumber(phoneNumber);
+  const purchaseAmount = validateAmount(amount);
+  const transactionReference = validateReference(reference);
+
+  const existingTransaction = await findExistingTransaction(
+    transactionReference
+  );
+
+  if (existingTransaction) {
+    return existingTransaction;
+  }
+
+  const transaction = await createPendingTransaction({
+    userId: validatedUser.id,
+    networkId: network.id,
+    providerId: provider.id,
+    reference: transactionReference,
+    phoneNumber: normalizedPhone,
+    amount: purchaseAmount,
+    type: "AIRTIME",
+  });
+
+  const providerAdapter = createProviderAdapter(provider);
+
+  let providerResult;
+
+  try {
+    providerResult = await providerAdapter.purchaseAirtime({
+      reference: transaction.reference,
+      networkCode: network.code,
+      phoneNumber: transaction.phoneNumber,
+      amount: transaction.amount.toString(),
+    });
+  } catch (error) {
+    return markTransactionFailed(transaction.id, {
+      failureReason:
+        error.message || "Provider request failed.",
+      providerResponse: {
+        provider: "MOCK",
+        error: error.message,
+      },
+    });
+  }
+
+  if (providerResult.status === "FAILED") {
+  return markTransactionFailed(
+    transaction.id,
+    providerResult
+  );
+}
+
+if (providerResult.status === "PENDING") {
+  return markTransactionPending(
+    transaction.id,
+    providerResult
+  );
+}
+
+  if (providerResult.status === "SUCCESS") {
+    return completeSuccessfulTransaction(
+      transaction.id,
+      providerResult
+    );
+  }
+
+  return markTransactionPending(transaction.id, {
+    ...providerResult,
+    providerResponse: {
+      ...(providerResult.providerResponse || {}),
+      message:
+        "Unknown provider response. Transaction left pending for reconciliation.",
+    },
+  });
+}
+
+async function purchaseData({
+  userId,
+  networkCode,
+  phoneNumber,
+  dataPlanId,
+  reference,
+}) {
+  const validatedUser = await validateUser(userId);
+  const network = await getActiveNetwork(networkCode);
+  const provider = await getActiveProvider();
+
+  const normalizedPhone = validatePhoneNumber(phoneNumber);
+  const transactionReference = validateReference(reference);
+
+  if (!Number.isInteger(dataPlanId) || dataPlanId <= 0) {
+    throw new Error("Invalid data plan ID.");
+  }
+
+  const dataPlan = await prisma.dataPlan.findFirst({
+    where: {
+      id: dataPlanId,
+      networkId: network.id,
+      status: "ACTIVE",
+    },
+  });
+
+  if (!dataPlan) {
+    throw new Error("Data plan not found or inactive.");
+  }
+
+  const existingTransaction = await findExistingTransaction(
+    transactionReference
+  );
+
+  if (existingTransaction) {
+    return existingTransaction;
+  }
+
+  const transaction = await createPendingTransaction({
+    userId: validatedUser.id,
+    networkId: network.id,
+    providerId: provider.id,
+    dataPlanId: dataPlan.id,
+    reference: transactionReference,
+    phoneNumber: normalizedPhone,
+    amount: dataPlan.sellingPrice,
+    type: "DATA",
+    providerCost: dataPlan.providerCost,
+  });
+
+  const providerAdapter = createProviderAdapter(provider);
+
+  let providerResult;
+
+  try {
+    providerResult = await providerAdapter.purchaseData({
+      reference: transaction.reference,
+      networkCode: network.code,
+      phoneNumber: transaction.phoneNumber,
+      providerPlanId: dataPlan.providerPlanId,
+      amount: transaction.amount.toString(),
+    });
+  } catch (error) {
+    return markTransactionFailed(transaction.id, {
+      failureReason:
+        error.message || "Provider request failed.",
+      providerResponse: {
+        provider: "MOCK",
+        error: error.message,
+      },
+    });
+  }
+
+  if (providerResult.status === "FAILED") {
+  return markTransactionFailed(
+    transaction.id,
+    providerResult
+  );
+}
+
+  if (providerResult.status === "PENDING") {
+    return markTransactionPending(
+      transaction.id,
+      providerResult
+    );
+  }
+
+  if (providerResult.status === "SUCCESS") {
+    return completeSuccessfulTransaction(
+      transaction.id,
+      providerResult
+    );
+  }
+
+  return markTransactionPending(transaction.id, {
+    ...providerResult,
+    providerResponse: {
+      ...(providerResult.providerResponse || {}),
+      message:
+        "Unknown provider response. Transaction left pending for reconciliation.",
+    },
+  });
+}
+
+async function disconnectVtuService() {
+  await prisma.$disconnect();
+}
+
+module.exports = {
+  purchaseAirtime,
+  purchaseData,
+  disconnectVtuService,
+};
