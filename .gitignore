@@ -21,3 +21,4 @@ deep-vtu-audit-output.txt
 packageme.json
 *.corrupted-backup
 /src */
+*.backup
