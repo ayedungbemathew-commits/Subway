@@ -3,6 +3,18 @@ function getSecretKey() {
   const key = process.env.PAYSTACK_SECRET_KEY;
   if (!key) {
     throw new Error("PAYSTACK_SECRET_KEY is not configured.");
+const crypto = require("crypto");
+
+function verifyWebhookSignature(rawBody, signatureHeader) {
+  if (!signatureHeader) {
+    return false;
+  }
+  const hash = crypto
+    .createHmac("sha512", getSecretKey())
+    .update(rawBody)
+    .digest("hex");
+  return hash === signatureHeader;
+}
   }
   return key;
 }
@@ -66,3 +78,15 @@ module.exports = {
   initializeTransaction,
   verifyTransaction,
 };
+const crypto = require("crypto");
+
+function verifyWebhookSignature(rawBody, signatureHeader) {
+  if (!signatureHeader) {
+    return false;
+  }
+  const hash = crypto
+    .createHmac("sha512", getSecretKey())
+    .update(rawBody)
+    .digest("hex");
+  return hash === signatureHeader;
+}
