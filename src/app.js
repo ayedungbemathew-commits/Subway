@@ -5,6 +5,7 @@ const authRoutes = require("./routes/authRoutes");
 const walletRoutes = require("./routes/walletRoutes");
 const vtuRoutes = require("./routes/vtuRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 const { webhook } = require("./controllers/paymentController");
 const { generalLimiter } = require("./middleware/rateLimit");
 
@@ -23,6 +24,7 @@ app.use("/auth", authRoutes);
 app.use("/wallet", walletRoutes);
 app.use("/vtu", vtuRoutes);
 app.use("/payments", paymentRoutes);
+app.use("/admin", adminRoutes);
 
 app.use((error, req, res, next) => {
   console.error(error);
