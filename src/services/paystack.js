@@ -1,9 +1,14 @@
+const crypto = require("crypto");
+
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
+
 function getSecretKey() {
   const key = process.env.PAYSTACK_SECRET_KEY;
   if (!key) {
     throw new Error("PAYSTACK_SECRET_KEY is not configured.");
-const crypto = require("crypto");
+  }
+  return key;
+}
 
 function verifyWebhookSignature(rawBody, signatureHeader) {
   if (!signatureHeader) {
@@ -15,9 +20,7 @@ function verifyWebhookSignature(rawBody, signatureHeader) {
     .digest("hex");
   return hash === signatureHeader;
 }
-  }
-  return key;
-}
+
 async function paystackRequest(path, options = {}) {
   const response = await fetch(`${PAYSTACK_BASE_URL}${path}`, {
     ...options,
@@ -35,6 +38,7 @@ async function paystackRequest(path, options = {}) {
   }
   return data;
 }
+
 async function initializeTransaction({
   email,
   amount,
@@ -65,6 +69,7 @@ async function initializeTransaction({
   });
   return result.data;
 }
+
 async function verifyTransaction(reference) {
   if (!reference || typeof reference !== "string") {
     throw new Error("A valid payment reference is required.");
@@ -74,19 +79,9 @@ async function verifyTransaction(reference) {
   );
   return result.data;
 }
+
 module.exports = {
   initializeTransaction,
   verifyTransaction,
+  verifyWebhookSignature,
 };
-const crypto = require("crypto");
-
-function verifyWebhookSignature(rawBody, signatureHeader) {
-  if (!signatureHeader) {
-    return false;
-  }
-  const hash = crypto
-    .createHmac("sha512", getSecretKey())
-    .update(rawBody)
-    .digest("hex");
-  return hash === signatureHeader;
-}
