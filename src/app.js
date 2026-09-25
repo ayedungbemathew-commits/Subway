@@ -1,5 +1,7 @@
 require("dotenv").config();
 const express = require("express");
+const helmet = require("helmet");
+const cors = require("cors");
 const morgan = require("morgan");
 const authRoutes = require("./routes/authRoutes");
 const walletRoutes = require("./routes/walletRoutes");
@@ -11,6 +13,20 @@ const { webhook } = require("./controllers/paymentController");
 const { generalLimiter } = require("./middleware/rateLimit");
 
 const app = express();
+
+app.use(helmet());
+
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+    credentials: true,
+  })
+);
 
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
