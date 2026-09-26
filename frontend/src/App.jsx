@@ -6,6 +6,7 @@ import DashboardPage from "./pages/DashboardPage";
 import FundWalletPage from "./pages/FundWalletPage";
 import BuyPage from "./pages/BuyPage";
 import HistoryPage from "./pages/HistoryPage";
+import PaymentCallbackPage from "./pages/PaymentCallbackPage";
 
 export default function App() {
   return (
@@ -42,6 +43,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <HistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/payment/callback"
+            element={
+              <ProtectedRoute>
+                <PaymentCallbackPage />
               </ProtectedRoute>
             }
           />

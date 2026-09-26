@@ -13,7 +13,8 @@ export default function FundWalletPage() {
     setLoading(true);
 
     try {
-      const res = await client.post("/payments/initialize", { amount: Number(amount) });
+       const callbackUrl = `${window.location.origin}/payment/callback`;
+      const res = await client.post("/payments/initialize", { amount: Number(amount), callbackUrl });
       window.location.href = res.data.authorizationUrl;
     } catch (err) {
       setError(err.response?.data?.error || "Could not start payment. Please try again.");
