@@ -28,8 +28,8 @@ export default function BuyPage() {
     if (type === "data" && networkCode) {
       client.get(`/catalog/data-plans?networkId=${networks.find((n) => n.code === networkCode)?.id}`).then((res) => {
         const active = res.data.dataPlans.filter((p) => p.status === "ACTIVE");
-        setDataPlans(active);
-        if (active.length > 0) setVariationId(active[0].providerPlanId || String(active[0].id));
+                setDataPlans(active);
+        if (active.length > 0) setVariationId(String(active[0].id));
       });
     }
   }, [type, networkCode, networks]);
@@ -54,11 +54,10 @@ export default function BuyPage() {
         await client.post("/vtu/data", {
           networkCode,
           phoneNumber,
-          providerPlanId: variationId,
+          dataPlanId: Number(variationId),
           reference,
         });
-      }
-      setSuccess("Purchase successful!");
+      }      setSuccess("Purchase successful!");
       setTimeout(() => navigate("/history"), 1200);
     } catch (err) {
       setError(err.response?.data?.error || "Purchase failed. Please try again.");
@@ -123,8 +122,8 @@ export default function BuyPage() {
           <>
             <label>Data Plan</label>
             <select value={variationId} onChange={(e) => setVariationId(e.target.value)}>
-              {dataPlans.map((p) => (
-                <option key={p.id} value={p.providerPlanId || p.id}>
+                            {dataPlans.map((p) => (
+                <option key={p.id} value={p.id}>
                   {p.name} — ₦{p.sellingPrice}
                 </option>
               ))}
