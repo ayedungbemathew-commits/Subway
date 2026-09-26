@@ -86,6 +86,14 @@ describe("Catalog write endpoints (admin only)", () => {
     expect(res.body.network.status).toBe("INACTIVE");
   });
 
+  test("PATCH /catalog/networks/:id returns 400 for a non-numeric ID", async () => {
+    const res = await request(app)
+      .patch("/catalog/networks/not-a-number")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: "ACTIVE" });
+    expect(res.status).toBe(400);
+  });
+
   test("POST /catalog/data-plans rejects sellingPrice below providerCost", async () => {
     const res = await request(app)
       .post("/catalog/data-plans")

@@ -1,5 +1,6 @@
 const { z } = require("zod");
 const { PrismaClient, Prisma } = require("@prisma/client");
+const { parseId } = require("../utils/parseId");
 const prisma = new PrismaClient();
 
 async function logAdminAction(actorId, action, entity, entityId, oldValue, newValue) {
@@ -45,7 +46,10 @@ async function listUsers(req, res) {
 }
 
 async function getUser(req, res) {
-  const userId = parseInt(req.params.id, 10);
+  const userId = parseId(req.params.id);
+  if (userId === null) {
+    return res.status(400).json({ error: "Invalid user ID." });
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -73,7 +77,11 @@ const updateStatusSchema = z.object({
 });
 
 async function updateUserStatus(req, res) {
-  const userId = parseInt(req.params.id, 10);
+  const userId = parseId(req.params.id);
+  if (userId === null) {
+    return res.status(400).json({ error: "Invalid user ID." });
+  }
+
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -106,13 +114,16 @@ const updateRoleSchema = z.object({
 });
 
 async function updateUserRole(req, res) {
-  const userId = parseInt(req.params.id, 10);
+  const userId = parseId(req.params.id);
+  if (userId === null) {
+    return res.status(400).json({ error: "Invalid user ID." });
+  }
+
   const parsed = updateRoleSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
   }
 
-  // Only SUPER_ADMIN can grant/revoke ADMIN or SUPER_ADMIN roles.
   if (req.user.role !== "SUPER_ADMIN") {
     return res.status(403).json({ error: "Only a super admin can change roles." });
   }
@@ -194,7 +205,11 @@ const manualAdjustmentSchema = z.object({
 });
 
 async function adjustWallet(req, res) {
-  const userId = parseInt(req.params.id, 10);
+  const userId = parseId(req.params.id);
+  if (userId === null) {
+    return res.status(400).json({ error: "Invalid user ID." });
+  }
+
   const parsed = manualAdjustmentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });

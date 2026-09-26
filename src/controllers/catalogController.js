@@ -1,5 +1,6 @@
 const { z } = require("zod");
 const { PrismaClient, Prisma } = require("@prisma/client");
+const { parseId } = require("../utils/parseId");
 const prisma = new PrismaClient();
 
 async function logAdminAction(actorId, action, entity, entityId, oldValue, newValue) {
@@ -35,7 +36,11 @@ async function createNetwork(req, res) {
 const networkUpdateSchema = networkSchema.partial();
 
 async function updateNetwork(req, res) {
-  const id = parseInt(req.params.id, 10);
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(400).json({ error: "Invalid network ID." });
+  }
+
   const parsed = networkUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -80,7 +85,11 @@ async function createProvider(req, res) {
 const providerUpdateSchema = providerSchema.partial();
 
 async function updateProvider(req, res) {
-  const id = parseInt(req.params.id, 10);
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(400).json({ error: "Invalid provider ID." });
+  }
+
   const parsed = providerUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -151,7 +160,11 @@ async function createDataPlan(req, res) {
 const dataPlanUpdateSchema = dataPlanSchema.partial();
 
 async function updateDataPlan(req, res) {
-  const id = parseInt(req.params.id, 10);
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(400).json({ error: "Invalid data plan ID." });
+  }
+
   const parsed = dataPlanUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0].message });

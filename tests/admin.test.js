@@ -74,6 +74,13 @@ describe("Admin user management", () => {
     expect(res.body.user.id).toBe(regularUserId);
   });
 
+  test("GET /admin/users/:id returns 400 for a non-numeric ID", async () => {
+    const res = await request(app)
+      .get("/admin/users/not-a-number")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
   test("PATCH /admin/users/:id/status updates status and logs the action", async () => {
     const res = await request(app)
       .patch(`/admin/users/${regularUserId}/status`)
