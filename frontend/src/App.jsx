@@ -7,7 +7,7 @@ import FundWalletPage from "./pages/FundWalletPage";
 import BuyPage from "./pages/BuyPage";
 import HistoryPage from "./pages/HistoryPage";
 import PaymentCallbackPage from "./pages/PaymentCallbackPage";
-
+import NotFoundPage from "./pages/NotFoundPage";
 export default function App() {
   return (
     <BrowserRouter>
@@ -54,6 +54,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
