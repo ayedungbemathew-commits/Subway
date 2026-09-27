@@ -7,11 +7,16 @@ export default function FundWalletPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e) {
+    async function handleSubmit(e) {
     e.preventDefault();
     setError("");
-    setLoading(true);
 
+      if (!amount || Number(amount) < 100) {
+      setError("Minimum funding amount is ₦100.");
+      return;
+    }
+
+    setLoading(true);
     try {
        const callbackUrl = `${window.location.origin}/payment/callback`;
       const res = await client.post("/payments/initialize", { amount: Number(amount), callbackUrl });

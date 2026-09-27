@@ -34,12 +34,22 @@ export default function BuyPage() {
     }
   }, [type, networkCode, networks]);
 
-  async function handleSubmit(e) {
+    async function handleSubmit(e) {
     e.preventDefault();
     setError("");
     setSuccess("");
-    setLoading(true);
 
+    if (!phoneNumber || phoneNumber.length < 10 || phoneNumber.length > 15) {
+      setError("Enter a valid phone number.");
+      return;
+    }
+
+    if (type === "airtime" && (!amount || Number(amount) <= 0)) {
+      setError("Enter a valid amount.");
+      return;
+    }
+
+    setLoading(true);
     const reference = `WEB-${type.toUpperCase()}-${Date.now()}`;
 
     try {
