@@ -2,7 +2,7 @@ const { PrismaClient, Prisma } = require("@prisma/client");
 const MockProvider = require("../providers/mockProvider");
 const { debitWalletInTransaction } = require("./wallet");
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ transactionOptions: { maxWait: 10000, timeout: 30000 } });
 
 function money(amount) {
   try {

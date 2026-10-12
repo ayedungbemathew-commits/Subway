@@ -5,7 +5,7 @@ const {
   verifyTransaction,
 } = require("./paystack");
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ transactionOptions: { maxWait: 10000, timeout: 30000 } });
 
 async function createPayment({
   userId,

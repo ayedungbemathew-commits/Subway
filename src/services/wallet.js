@@ -1,6 +1,6 @@
-﻿const { PrismaClient, Prisma } = require("@prisma/client");
+const { PrismaClient, Prisma } = require("@prisma/client");
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ transactionOptions: { maxWait: 10000, timeout: 30000 } });
 
 function money(amount) {
   try {
