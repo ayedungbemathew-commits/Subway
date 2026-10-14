@@ -55,7 +55,7 @@ async function debitWalletInTransaction(
 
   const debitAmount = validateAmount(amount);
 
-  const wallet = await tx.wallet.findUnique({
+  const wallet = await lockWallet(tx, {
     where: {
       userId,
     },
@@ -106,6 +106,11 @@ async function debitWalletInTransaction(
     },
   });
 }
+async function lockWallet(tx, args) {
+  const rows = await tx.$queryRaw`SELECT id, userId, balance FROM wallets WHERE userId = ${args.where.userId} FOR UPDATE`;
+  if (!rows.length) return null;
+  return { id: Number(rows[0].id), userId: Number(rows[0].userId), balance: new Prisma.Decimal(rows[0].balance) };
+}
 async function creditWalletInTransaction(
   tx,
   {
@@ -125,7 +130,7 @@ async function creditWalletInTransaction(
 
   const creditAmount = validateAmount(amount);
 
-  const wallet = await tx.wallet.findUnique({
+  const wallet = await lockWallet(tx, {
     where: {
       userId,
     },
@@ -220,7 +225,7 @@ async function creditWallet({
 
   return prisma.$transaction(
     async (tx) => {
-      const wallet = await tx.wallet.findUnique({
+      const wallet = await lockWallet(tx, {
         where: { userId },
       });
 
@@ -260,7 +265,7 @@ async function creditWallet({
       });
     },
     {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      
     }
   );
 }
@@ -285,7 +290,7 @@ async function debitWallet({
       });
     },
     {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      
     }
   );
 }

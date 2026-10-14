@@ -275,7 +275,7 @@ async function completeSuccessfulTransaction(
           });
         },
         {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          
         }
       );
     } catch (error) {
