@@ -50,24 +50,24 @@ export default function BuyPage() {
     }
 
     setLoading(true);
-    const reference = `WEB-${type.toUpperCase()}-${Date.now()}`;
+    const reference = `WEB-${type.toUpperCase()}-${Date.now()}`; let res;
 
     try {
       if (type === "airtime") {
-        await client.post("/vtu/airtime", {
+        res = await client.post("/vtu/airtime", {
           networkCode,
           phoneNumber,
           amount: Number(amount),
           reference,
         });
       } else {
-        await client.post("/vtu/data", {
+        res = await client.post("/vtu/data", {
           networkCode,
           phoneNumber,
           dataPlanId: Number(variationId),
           reference,
         });
-      }      setSuccess("Purchase successful!");
+      }      const tx = res && res.data && res.data.transaction; const st = tx && tx.status; if (st === "FAILED" || st === "REVERSED") { setError(tx.failureReason || "Purchase failed. Please try again."); return; } setSuccess(st === "SUCCESS" ? "Purchase successful!" : "Purchase is processing. Check your history for the final status.");
       setTimeout(() => navigate("/history"), 1200);
     } catch (err) {
       setError(err.response?.data?.error || "Purchase failed. Please try again.");
