@@ -174,6 +174,8 @@ async function createPendingTransactionSafely(data) {
   }
 }
 async function markTransactionFailed(transactionId, providerResult) {
+  console.error("Transaction failed:", transactionId, providerResult.failureReason);
+  providerResult = { ...providerResult, failureReason: String(providerResult.failureReason || "Provider failed to process the transaction.").replace(/\s+/g, " ").slice(0, 190) };
   return prisma.transaction.update({
     where: {
       id: transactionId,
