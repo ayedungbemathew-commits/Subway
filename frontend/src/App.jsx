@@ -8,20 +8,17 @@ import BuyPage from "./pages/BuyPage";
 import HistoryPage from "./pages/HistoryPage";
 import PaymentCallbackPage from "./pages/PaymentCallbackPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import HomeRoute from "./pages/HomeRoute";
+import TermsPage from "./pages/TermsPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import ContactPage from "./pages/ContactPage";
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<AuthPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/" element={<HomeRoute />} />
           <Route
             path="/fund"
             element={
@@ -54,6 +51,9 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AuthProvider>

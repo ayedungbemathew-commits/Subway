@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import SiteFooter from "../components/SiteFooter";
 
 export default function AuthPage() {
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState(new URLSearchParams(window.location.search).get("mode") === "register" ? "register" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -83,6 +84,7 @@ export default function AuthPage() {
           </>
         )}
       </p>
+    <SiteFooter />
     </div>
   );
 }
