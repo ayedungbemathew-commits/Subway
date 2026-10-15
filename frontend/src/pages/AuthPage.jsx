@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import SiteFooter from "../components/SiteFooter";
@@ -58,6 +58,12 @@ export default function AuthPage() {
           {loading ? "Please wait..." : mode === "login" ? "Log In" : "Create Account"}
         </button>
       </form>
+
+      {mode === "login" && (
+        <p style={{ textAlign: "center", marginTop: 16, fontSize: 14 }}>
+          <Link to="/forgot-password" className="back-link">Forgot password?</Link>
+        </p>
+      )}
 
       <p style={{ textAlign: "center", marginTop: 16, fontSize: 14 }}>
         {mode === "login" ? (

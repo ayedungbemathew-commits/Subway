@@ -103,6 +103,8 @@ model User {
   payments          Payment[]
   adminAuditLogs    AdminAuditLog[]
 
+  passwordResetTokens PasswordResetToken[]
+
   @@index([email])
   @@index([phone])
   @@index([status])
@@ -318,4 +320,18 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique @db.VarChar(64)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }

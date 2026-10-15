@@ -13,6 +13,9 @@ const { webhook } = require("./controllers/paymentController");
 const { generalLimiter } = require("./middleware/rateLimit");
 
 const app = express();
+// Render puts one proxy in front of the app. Without this, every visitor shares the
+// proxy's IP address and the rate limits would count all users together.
+app.set("trust proxy", 1);
 
 app.use(helmet());
 
