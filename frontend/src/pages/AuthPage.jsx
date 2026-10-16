@@ -42,7 +42,7 @@ export default function AuthPage() {
         {mode === "register" && (
           <>
             <label>Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+            <input type="text" required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
           </>
         )}
 
