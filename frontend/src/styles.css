@@ -294,3 +294,98 @@ button[type="submit"]:disabled {
   color: #8ab4f8;
   text-decoration: none;
 }
+
+/* Admin plans */
+.admin-page {
+  max-width: 760px;
+  margin: 40px auto;
+  padding: 24px;
+}
+
+.admin-page h1 {
+  font-size: 26px;
+  margin: 12px 0 8px;
+}
+
+.admin-page h2 {
+  font-size: 18px;
+  margin: 28px 0 12px;
+}
+
+.admin-page .meta-note {
+  color: #999;
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.form-grid button[type="submit"] {
+  grid-column: 1 / -1;
+}
+
+.plan-row {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.plan-row.inactive {
+  opacity: 0.65;
+}
+
+.plan-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.plan-meta {
+  color: #aaa;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #333;
+}
+
+.badge.on {
+  color: #4ade80;
+  border-color: #2c6b46;
+}
+
+.badge.off {
+  color: #ff9f6b;
+  border-color: #6b4a2c;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.small-button {
+  padding: 8px 14px;
+  background: #262626;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+@media (max-width: 560px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

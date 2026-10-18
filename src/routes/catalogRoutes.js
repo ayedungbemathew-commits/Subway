@@ -9,6 +9,7 @@ const {
   createProvider,
   updateProvider,
   listDataPlans,
+  adminListDataPlans,
   createDataPlan,
   updateDataPlan,
 } = require("../controllers/catalogController");
@@ -22,6 +23,8 @@ router.get("/providers", listProviders);
 router.get("/data-plans", listDataPlans);
 
 router.use(requireAuth, requireRole("ADMIN", "SUPER_ADMIN"));
+
+router.get("/admin/data-plans", adminListDataPlans);
 
 router.post("/networks", createNetwork);
 router.patch("/networks/:id", updateNetwork);

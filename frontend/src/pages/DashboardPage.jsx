@@ -39,6 +39,12 @@ export default function DashboardPage() {
       <Link to="/history" className="link-button">
         Transaction History
       </Link>
+
+      {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && (
+        <Link to="/admin/plans" className="link-button">
+          Manage data plans
+        </Link>
+      )}
     </div>
   );
 }

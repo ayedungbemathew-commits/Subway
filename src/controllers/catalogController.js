@@ -109,16 +109,33 @@ async function updateProvider(req, res) {
 
 async function listDataPlans(req, res) {
   const networkId = req.query.networkId ? parseInt(req.query.networkId, 10) : undefined;
-  const status = req.query.status;
 
-  const where = {};
+  // Public endpoint: only active plans, and never the provider cost or provider details.
+  const where = { status: "ACTIVE" };
   if (networkId) where.networkId = networkId;
-  if (status) where.status = status;
 
   const dataPlans = await prisma.dataPlan.findMany({
     where,
-    orderBy: { id: "asc" },
-    include: { network: true, provider: true },
+    orderBy: [{ networkId: "asc" }, { sellingPrice: "asc" }],
+    select: {
+      id: true,
+      networkId: true,
+      name: true,
+      dataAmount: true,
+      validity: true,
+      sellingPrice: true,
+      status: true,
+      network: { select: { id: true, name: true, code: true } },
+    },
+  });
+  return res.status(200).json({ dataPlans });
+}
+
+// Admin only (mounted behind requireRole): every plan, active or hidden, with costs.
+async function adminListDataPlans(req, res) {
+  const dataPlans = await prisma.dataPlan.findMany({
+    orderBy: [{ networkId: "asc" }, { id: "asc" }],
+    include: { network: { select: { id: true, name: true, code: true } } },
   });
   return res.status(200).json({ dataPlans });
 }
@@ -175,6 +192,12 @@ async function updateDataPlan(req, res) {
     return res.status(404).json({ error: "Data plan not found." });
   }
 
+  const nextPrice = parsed.data.sellingPrice !== undefined ? parsed.data.sellingPrice : Number(existing.sellingPrice);
+  const nextCost = parsed.data.providerCost !== undefined ? parsed.data.providerCost : Number(existing.providerCost);
+  if (nextPrice < nextCost) {
+    return res.status(400).json({ error: "Selling price is below provider cost." });
+  }
+
   const updated = await prisma.dataPlan.update({ where: { id }, data: parsed.data });
   await logAdminAction(req.user.id, "UPDATE_DATA_PLAN", "DataPlan", id, existing, updated);
   return res.status(200).json({ dataPlan: updated });
@@ -188,6 +211,7 @@ module.exports = {
   createProvider,
   updateProvider,
   listDataPlans,
+  adminListDataPlans,
   createDataPlan,
   updateDataPlan,
 };
