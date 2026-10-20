@@ -35,7 +35,7 @@ beforeAll(async () => {
   const net = await request(app)
     .post("/catalog/networks")
     .set("Authorization", "Bearer " + adminToken)
-    .send({ name: "Plans Test Net", code });
+    .send({ name: "Plans Test Net " + code, code });
   expect(net.status).toBe(201);
   networkId = net.body.network.id;
 });

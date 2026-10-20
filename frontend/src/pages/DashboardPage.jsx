@@ -45,6 +45,12 @@ export default function DashboardPage() {
           Manage data plans
         </Link>
       )}
+
+      {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && (
+        <Link to="/admin" className="link-button">
+          Admin: transactions and users
+        </Link>
+      )}
     </div>
   );
 }

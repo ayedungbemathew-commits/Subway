@@ -389,3 +389,39 @@ button[type="submit"]:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* Admin screens */
+.admin-tabs {
+  flex-wrap: wrap;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 12px 0 16px;
+}
+
+.filter-row > div {
+  flex: 1 1 160px;
+}
+
+.filter-row input,
+.filter-row select {
+  margin-bottom: 0;
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.ref {
+  word-break: break-all;
+  font-size: 12px;
+  color: #888;
+}

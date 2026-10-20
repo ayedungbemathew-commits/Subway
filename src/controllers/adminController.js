@@ -20,8 +20,19 @@ async function listUsers(req, res) {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize, 10) || 20));
 
+  // Admin: search and status filter.
+  const q = (req.query.q || "").toString().trim();
+  const status = req.query.status;
+
+  const where = {};
+  if (status) where.status = status;
+  if (q) {
+    where.OR = [{ email: { contains: q } }, { name: { contains: q } }, { phone: { contains: q } }];
+  }
+
   const [users, total] = await Promise.all([
     prisma.user.findMany({
+      where,
       orderBy: { id: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -36,7 +47,7 @@ async function listUsers(req, res) {
         wallet: { select: { balance: true } },
       },
     }),
-    prisma.user.count(),
+    prisma.user.count({ where }),
   ]);
 
   return res.status(200).json({
@@ -90,6 +101,13 @@ async function updateUserStatus(req, res) {
   const existing = await prisma.user.findUnique({ where: { id: userId } });
   if (!existing) {
     return res.status(404).json({ error: "User not found." });
+  }
+
+  if (existing.id === req.user.id) {
+    return res.status(403).json({ error: "You cannot change your own account status." });
+  }
+  if (existing.role !== "USER" && req.user.role !== "SUPER_ADMIN") {
+    return res.status(403).json({ error: "Only a super admin can change an admin account." });
   }
 
   const updated = await prisma.user.update({
@@ -154,8 +172,19 @@ async function listTransactions(req, res) {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize, 10) || 20));
   const status = req.query.status;
+  const type = req.query.type;
+  const q = (req.query.q || "").toString().trim();
 
-  const where = status ? { status } : {};
+  const where = {};
+  if (status) where.status = status;
+  if (type) where.type = type;
+  if (q) {
+    where.OR = [
+      { reference: { contains: q } },
+      { phoneNumber: { contains: q } },
+      { user: { email: { contains: q } } },
+    ];
+  }
 
   const [transactions, total] = await Promise.all([
     prisma.transaction.findMany({
@@ -228,7 +257,7 @@ async function adjustWallet(req, res) {
 
   const { creditWallet, debitWallet } = require("../services/wallet");
   const fn = type === "CREDIT" ? creditWallet : debitWallet;
-  const reference = `ADMIN-ADJUST-${Date.now()}-${userId}`;
+  const reference = `ADMIN-ADJUST-${Date.now()}-${userId}-${require("crypto").randomBytes(3).toString("hex")}`;
 
   const result = await fn({
     userId,
