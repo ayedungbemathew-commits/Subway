@@ -279,6 +279,26 @@ async function adjustWallet(req, res) {
   return res.status(200).json({ walletTransaction: result });
 }
 
+async function reconcileStuckByAdmin(req, res) {
+  const { reconcileStuckTransactions } = require("../services/vtu");
+  let summary;
+  try {
+    summary = await reconcileStuckTransactions({ limit: 20 });
+  } catch (error) {
+    console.error("Admin reconcile failed:", error.message);
+    return res.status(500).json({ error: "Reconcile failed." });
+  }
+  await logAdminAction(
+    req.user.id,
+    "RECONCILE_STUCK_TRANSACTIONS",
+    "Transaction",
+    "batch",
+    { trigger: "admin" },
+    summary
+  );
+  return res.status(200).json(summary);
+}
+
 const markFailedSchema = z.object({ reason: z.string().trim().min(3).max(150) });
 
 async function markTransactionFailedByAdmin(req, res) {
@@ -351,4 +371,5 @@ module.exports = {
   adjustWallet,
   getAuditLog,
   markTransactionFailedByAdmin,
+  reconcileStuckByAdmin,
 };

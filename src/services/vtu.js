@@ -491,6 +491,75 @@ async function reconcileTransaction(reference) {
   });
 }
 
+const STUCK_PROCESSING_MINUTES = 5;
+const STUCK_PENDING_MINUTES = 10;
+async function reconcileOne(transaction) {
+  if (!transaction.providerId) {
+    return "unchanged";
+  }
+  const provider = await prisma.provider.findUnique({
+    where: { id: transaction.providerId },
+  });
+  if (!provider) {
+    return "unchanged";
+  }
+  let providerResult;
+  try {
+    providerResult = await createProviderAdapter(provider).checkTransaction({
+      reference: transaction.reference,
+      transaction,
+    });
+  } catch (error) {
+    return "unchanged";
+  }
+  if (providerResult.status === "SUCCESS") {
+    const done = await completeSuccessfulTransaction(transaction.id, providerResult);
+    return done.status === "SUCCESS" ? "completed" : "unchanged";
+  }
+  if (providerResult.status === "FAILED") {
+    const failed = await failAndRefundTransaction(transaction.id, providerResult);
+    return failed.status === "FAILED" ? "failed" : "unchanged";
+  }
+  return "unchanged";
+}
+async function reconcileStuckTransactions({ limit = 20, onlyUserId = null } = {}) {
+  const batchSize = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20));
+  const now = Date.now();
+  const processingCutoff = new Date(now - STUCK_PROCESSING_MINUTES * 60 * 1000);
+  const pendingCutoff = new Date(now - STUCK_PENDING_MINUTES * 60 * 1000);
+  const where = {
+    OR: [
+      { status: "PROCESSING", createdAt: { lt: processingCutoff } },
+      { status: "PENDING", createdAt: { lt: pendingCutoff }, walletTransaction: { isNot: null } },
+    ],
+  };
+  if (onlyUserId !== null) {
+    where.userId = onlyUserId;
+  }
+  const rows = await prisma.transaction.findMany({
+    where,
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: batchSize,
+  });
+  const summary = { checked: rows.length, completed: 0, failed: 0, unchanged: 0, errors: 0 };
+  for (const row of rows) {
+    try {
+      const outcome = await reconcileOne(row);
+      if (outcome === "completed") {
+        summary.completed += 1;
+      } else if (outcome === "failed") {
+        summary.failed += 1;
+      } else {
+        summary.unchanged += 1;
+      }
+    } catch (error) {
+      summary.errors += 1;
+      console.error("Reconcile error for transaction", row.id, error.message);
+    }
+  }
+  return summary;
+}
+
 async function findExistingTransaction(reference) {
   return prisma.transaction.findUnique({
     where: {
@@ -612,6 +681,7 @@ module.exports = {
   purchaseAirtime,
   purchaseData,
   reconcileTransaction,
+  reconcileStuckTransactions,
   disconnectVtuService,
 };
 

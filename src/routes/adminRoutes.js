@@ -10,6 +10,7 @@ const {
   listPayments,
   adjustWallet,
   markTransactionFailedByAdmin,
+  reconcileStuckByAdmin,
   getAuditLog,
 } = require("../controllers/adminController");
 
@@ -26,6 +27,7 @@ router.patch("/users/:id/role", updateUserRole);
 router.get("/transactions", listTransactions);
 router.get("/payments", listPayments);
 router.patch("/transactions/:id/fail", markTransactionFailedByAdmin);
+router.post("/reconcile", reconcileStuckByAdmin);
 
 router.post("/users/:id/wallet/adjust", adjustWallet);
 
