@@ -1,6 +1,6 @@
 const { PrismaClient, Prisma } = require("@prisma/client");
 const MockProvider = require("../providers/mockProvider");
-const { debitWalletInTransaction } = require("./wallet");
+const { debitWalletInTransaction, creditWalletInTransaction } = require("./wallet");
 
 const prisma = new PrismaClient({ transactionOptions: { maxWait: 10000, timeout: 30000 } });
 
@@ -318,41 +318,152 @@ async function completeSuccessfulTransaction(
     "Transaction could not be completed after multiple concurrency retries."
   );
 }
-async function reconcileTransaction(reference) {
-  const transactionReference = validateReference(reference);
-
-  const transaction = await prisma.transaction.findUnique({
-    where: {
-      reference: transactionReference,
+async function chargeWalletForTransaction(transaction) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      await debitWalletInTransaction(tx, {
+        userId: transaction.userId,
+        amount: transaction.amount,
+        reference: "VTU-DEBIT-" + transaction.id,
+        transactionId: transaction.id,
+        description:
+          transaction.type === "AIRTIME"
+            ? "Airtime purchase for " + transaction.phoneNumber
+            : "Data purchase for " + transaction.phoneNumber,
+      });
+    });
+    return { charged: true };
+  } catch (error) {
+    if (error instanceof Error && error.message === "Insufficient wallet balance.") {
+      const failed = await prisma.transaction.update({
+        where: { id: transaction.id },
+        data: { status: "FAILED", failureReason: "Insufficient wallet balance." },
+      });
+      return { charged: false, transaction: failed };
+    }
+    throw error;
+  }
+}
+async function failAndRefundTransaction(transactionId, providerResult) {
+  const failureReason = String(
+    providerResult.failureReason || "Provider failed to process the transaction."
+  ).replace(/\s+/g, " ").slice(0, 190);
+  console.error("Transaction failed:", transactionId, failureReason);
+  return prisma.$transaction(async (tx) => {
+    const transaction = await tx.transaction.findUnique({ where: { id: transactionId } });
+    if (!transaction) {
+      throw new Error("VTU transaction not found.");
+    }
+    // Never turn a completed purchase into a failure, and never refund twice.
+    if (transaction.status === "SUCCESS" || transaction.status === "REVERSED") {
+      return transaction;
+    }
+    if (transaction.status === "FAILED" && transaction.refunded) {
+      return transaction;
+    }
+    const debit = await tx.walletTransaction.findUnique({
+      where: { reference: "VTU-DEBIT-" + transaction.id },
+    });
+    let refundedNow = false;
+    if (debit && !transaction.refunded) {
+      await creditWalletInTransaction(tx, {
+        userId: transaction.userId,
+        amount: transaction.amount,
+        reference: "VTU-REFUND-" + transaction.id,
+        description:
+          "Refund for failed " +
+          (transaction.type === "AIRTIME" ? "airtime" : "data") +
+          " purchase for " +
+          transaction.phoneNumber,
+        type: "REFUND",
+      });
+      refundedNow = true;
+    }
+    const data = {
+      status: "FAILED",
+      providerReference: providerResult.providerReference || null,
+      failureReason,
+    };
+    if (providerResult.providerResponse) {
+      data.providerResponse = providerResult.providerResponse;
+    }
+    if (refundedNow) {
+      data.refunded = true;
+      data.refundedAt = new Date();
+    }
+    return tx.transaction.update({ where: { id: transaction.id }, data });
+  });
+}
+async function settleProviderCall(transaction, provider, callProvider) {
+  let providerResult;
+  try {
+    providerResult = await callProvider();
+  } catch (error) {
+    return markTransactionPending(transaction.id, {
+      providerResponse: {
+        provider: provider.code || provider.name || "UNKNOWN",
+        error: error.message || "Provider request failed.",
+        message:
+          "Provider request failed or timed out. Transaction remains in processing state for reconciliation.",
+      },
+    });
+  }
+  if (providerResult.status === "FAILED") {
+    return failAndRefundTransaction(transaction.id, providerResult);
+  }
+  if (providerResult.status === "PENDING") {
+    return markTransactionPending(transaction.id, providerResult);
+  }
+  if (providerResult.status === "SUCCESS") {
+    try {
+      return await completeSuccessfulTransaction(transaction.id, providerResult);
+    } catch (error) {
+      // The provider delivered and the wallet is already charged.
+      // Never refund or fail here: keep PROCESSING so reconciliation finishes it.
+      const current = await prisma.transaction.findUnique({ where: { id: transaction.id } });
+      if (current && current.status !== "PENDING" && current.status !== "PROCESSING") {
+        return current;
+      }
+      return markTransactionPending(transaction.id, {
+        providerReference: providerResult.providerReference,
+        providerResponse: {
+          ...(providerResult.providerResponse || {}),
+          completionError: error.message,
+        },
+      });
+    }
+  }
+  return markTransactionPending(transaction.id, {
+    ...providerResult,
+    providerResponse: {
+      ...(providerResult.providerResponse || {}),
+      message:
+        "Unknown provider response. Transaction left pending for reconciliation.",
     },
   });
-
+}
+async function reconcileTransaction(reference) {
+  const transactionReference = validateReference(reference);
+  const transaction = await prisma.transaction.findUnique({
+    where: { reference: transactionReference },
+  });
   if (!transaction) {
     throw new Error("VTU transaction not found.");
   }
-
   if (transaction.status !== "PROCESSING") {
     return transaction;
   }
-
   if (!transaction.providerId) {
     throw new Error("Transaction has no provider assigned.");
   }
-
   const provider = await prisma.provider.findUnique({
-    where: {
-      id: transaction.providerId,
-    },
+    where: { id: transaction.providerId },
   });
-
   if (!provider) {
     throw new Error("Transaction provider not found.");
   }
-
   const providerAdapter = createProviderAdapter(provider);
-
   let providerResult;
-
   try {
     providerResult = await providerAdapter.checkTransaction({
       reference: transaction.reference,
@@ -361,28 +472,15 @@ async function reconcileTransaction(reference) {
   } catch (error) {
     return transaction;
   }
-
   if (providerResult.status === "SUCCESS") {
-    return completeSuccessfulTransaction(
-      transaction.id,
-      providerResult
-    );
+    return completeSuccessfulTransaction(transaction.id, providerResult);
   }
-
   if (providerResult.status === "FAILED") {
-    return markTransactionFailed(
-      transaction.id,
-      providerResult
-    );
+    return failAndRefundTransaction(transaction.id, providerResult);
   }
-
   if (providerResult.status === "PENDING") {
-    return markTransactionPending(
-      transaction.id,
-      providerResult
-    );
+    return markTransactionPending(transaction.id, providerResult);
   }
-
   return markTransactionPending(transaction.id, {
     ...providerResult,
     providerResponse: {
@@ -412,19 +510,13 @@ async function purchaseAirtime({
   const validatedUser = await validateUser(userId);
   const network = await getActiveNetwork(networkCode);
   const provider = await getActiveProvider();
-
   const normalizedPhone = validatePhoneNumber(phoneNumber);
   const purchaseAmount = validateAmount(amount);
   const transactionReference = validateReference(reference);
-
-  const existingTransaction = await findExistingTransaction(
-    transactionReference
-  );
-
+  const existingTransaction = await findExistingTransaction(transactionReference);
   if (existingTransaction) {
     return existingTransaction;
   }
-
   const pendingResult = await createPendingTransactionSafely({
     userId: validatedUser.id,
     networkId: network.id,
@@ -434,77 +526,24 @@ async function purchaseAirtime({
     amount: purchaseAmount,
     type: "AIRTIME",
   });
-
   const transaction = pendingResult.transaction;
-
   if (!pendingResult.created) {
     return transaction;
   }
-
-  const providerAdapter = createProviderAdapter(provider);
-
-  let providerResult;
-
-  try {
-    providerResult = await providerAdapter.purchaseAirtime({
+  // Charge the wallet first. If the balance is too low, the provider is never called.
+  const charge = await chargeWalletForTransaction(transaction);
+  if (!charge.charged) {
+    return charge.transaction;
+  }
+  return settleProviderCall(transaction, provider, () =>
+    createProviderAdapter(provider).purchaseAirtime({
       reference: transaction.reference,
       networkCode: network.code,
       phoneNumber: transaction.phoneNumber,
       amount: transaction.amount.toString(),
-    });
-  } catch (error) {
-  return markTransactionPending(transaction.id, {
-    providerResponse: {
-      provider: "MOCK",
-      error: error.message || "Provider request failed.",
-      message:
-        "Provider request failed or timed out. Transaction remains in processing state for reconciliation.",
-    },
-  });
-}
-
-  if (providerResult.status === "FAILED") {
-  return markTransactionFailed(
-    transaction.id,
-    providerResult
+    })
   );
 }
-
-if (providerResult.status === "PENDING") {
-  return markTransactionPending(
-    transaction.id,
-    providerResult
-  );
-}
-
-  if (providerResult.status === "SUCCESS") {
-  try {
-    return await completeSuccessfulTransaction(
-      transaction.id,
-      providerResult
-    );
-  } catch (error) {
-    return markTransactionFailed(transaction.id, {
-      failureReason:
-        error.message || "Transaction could not be completed.",
-      providerResponse: {
-        ...(providerResult.providerResponse || {}),
-        completionError: error.message,
-      },
-    });
-  }
-}
-
-  return markTransactionPending(transaction.id, {
-    ...providerResult,
-    providerResponse: {
-      ...(providerResult.providerResponse || {}),
-      message:
-        "Unknown provider response. Transaction left pending for reconciliation.",
-    },
-  });
-}
-
 async function purchaseData({
   userId,
   networkCode,
@@ -515,14 +554,11 @@ async function purchaseData({
   const validatedUser = await validateUser(userId);
   const network = await getActiveNetwork(networkCode);
   const provider = await getActiveProvider();
-
   const normalizedPhone = validatePhoneNumber(phoneNumber);
   const transactionReference = validateReference(reference);
-
   if (!Number.isInteger(dataPlanId) || dataPlanId <= 0) {
     throw new Error("Invalid data plan ID.");
   }
-
   const dataPlan = await prisma.dataPlan.findFirst({
     where: {
       id: dataPlanId,
@@ -530,19 +566,13 @@ async function purchaseData({
       status: "ACTIVE",
     },
   });
-
   if (!dataPlan) {
     throw new Error("Data plan not found or inactive.");
   }
-
-  const existingTransaction = await findExistingTransaction(
-    transactionReference
-  );
-
+  const existingTransaction = await findExistingTransaction(transactionReference);
   if (existingTransaction) {
     return existingTransaction;
   }
-
   const pendingResult = await createPendingTransactionSafely({
     userId: validatedUser.id,
     networkId: network.id,
@@ -554,65 +584,24 @@ async function purchaseData({
     type: "DATA",
     providerCost: dataPlan.providerCost,
   });
-
   const transaction = pendingResult.transaction;
-
   if (!pendingResult.created) {
     return transaction;
   }
-
-  const providerAdapter = createProviderAdapter(provider);
-
-  let providerResult;
-
-  try {
-    providerResult = await providerAdapter.purchaseData({
+  // Charge the wallet first. If the balance is too low, the provider is never called.
+  const charge = await chargeWalletForTransaction(transaction);
+  if (!charge.charged) {
+    return charge.transaction;
+  }
+  return settleProviderCall(transaction, provider, () =>
+    createProviderAdapter(provider).purchaseData({
       reference: transaction.reference,
       networkCode: network.code,
       phoneNumber: transaction.phoneNumber,
       providerPlanId: dataPlan.providerPlanId,
       amount: transaction.amount.toString(),
-    });
-  } catch (error) {
-  return markTransactionPending(transaction.id, {
-    providerResponse: {
-      provider: "MOCK",
-      error: error.message || "Provider request failed.",
-      message:
-        "Provider request failed or timed out. Transaction remains in processing state for reconciliation.",
-    },
-  });
-}
-
-  if (providerResult.status === "FAILED") {
-  return markTransactionFailed(
-    transaction.id,
-    providerResult
+    })
   );
-}
-
-  if (providerResult.status === "PENDING") {
-    return markTransactionPending(
-      transaction.id,
-      providerResult
-    );
-  }
-
-  if (providerResult.status === "SUCCESS") {
-    return completeSuccessfulTransaction(
-      transaction.id,
-      providerResult
-    );
-  }
-
-  return markTransactionPending(transaction.id, {
-    ...providerResult,
-    providerResponse: {
-      ...(providerResult.providerResponse || {}),
-      message:
-        "Unknown provider response. Transaction left pending for reconciliation.",
-    },
-  });
 }
 
 async function disconnectVtuService() {
