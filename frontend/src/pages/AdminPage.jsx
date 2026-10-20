@@ -313,7 +313,7 @@ export default function AdminPage() {
               <span className="meta-note">{when(l.createdAt)}</span>
             </div>
             <div className="plan-meta">
-              {l.actor ? l.actor.email : "user " + l.actorId} &middot; {l.entity} #{l.entityId}
+              {l.actor ? l.actor.email : "user " + l.actorId} &middot; {l.entity} #{l.entityId}{auditDetail(l) && <div style={{ marginTop: 4 }}>{auditDetail(l)}</div>}
             </div>
           </div>
         ))}
@@ -328,3 +328,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+function auditDetail(l) { var parse = function (v) { if (typeof v === "string") { try { return JSON.parse(v); } catch (e) { return null; } } return v || null; }; var o = parse(l.oldValue), n = parse(l.newValue); if (n && n.type && n.amount !== undefined) { return String(n.type).toUpperCase() + " \u20A6" + Number(n.amount).toLocaleString() + (n.reason ? " \u00B7 " + n.reason : "") + (n.balanceAfter !== undefined ? " \u00B7 balance \u20A6" + Number(n.balanceAfter).toLocaleString() : ""); } if (n && n.status) { return (o && o.status ? o.status : "?") + " \u2192 " + n.status; } if (n && n.role) { return (o && o.role ? o.role : "?") + " \u2192 " + n.role; } return ""; }
