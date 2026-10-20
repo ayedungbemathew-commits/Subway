@@ -279,6 +279,48 @@ async function adjustWallet(req, res) {
   return res.status(200).json({ walletTransaction: result });
 }
 
+const markFailedSchema = z.object({ reason: z.string().trim().min(3).max(150) });
+
+async function markTransactionFailedByAdmin(req, res) {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(400).json({ error: "Invalid transaction ID." });
+  }
+
+  const parsed = markFailedSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.issues[0].message });
+  }
+  const { reason } = parsed.data;
+
+  const tx = await prisma.transaction.findUnique({ where: { id }, include: { walletTransaction: true } });
+  if (!tx) {
+    return res.status(404).json({ error: "Transaction not found." });
+  }
+  if (tx.status !== "PENDING") {
+    return res.status(409).json({ error: "Only PENDING transactions can be marked as failed." });
+  }
+  if (Date.now() - new Date(tx.createdAt).getTime() < 10 * 60 * 1000) {
+    return res.status(409).json({ error: "This transaction is less than 10 minutes old and may still be processing." });
+  }
+  if (tx.providerReference || tx.refunded || tx.walletTransaction) {
+    return res.status(409).json({ error: "This transaction has a provider reference or wallet entry. Resolve it manually." });
+  }
+
+  const failureReason = ("Marked failed by admin: " + reason).slice(0, 190);
+  const updated = await prisma.transaction.updateMany({
+    where: { id, status: "PENDING", refunded: false, providerReference: null, walletTransaction: { is: null } },
+    data: { status: "FAILED", failureReason },
+  });
+  if (updated.count !== 1) {
+    return res.status(409).json({ error: "This transaction changed while you were working. Refresh and check it." });
+  }
+
+  await logAdminAction(req.user.id, "MARK_TRANSACTION_FAILED", "Transaction", id, { status: "PENDING" }, { status: "FAILED", reason });
+
+  return res.status(200).json({ ok: true });
+}
+
 async function getAuditLog(req, res) {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize, 10) || 20));
@@ -308,4 +350,5 @@ module.exports = {
   listPayments,
   adjustWallet,
   getAuditLog,
+  markTransactionFailedByAdmin,
 };
