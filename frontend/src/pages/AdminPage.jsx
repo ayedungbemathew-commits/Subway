@@ -220,6 +220,7 @@ export default function AdminPage() {
       {loading && <p className="meta-note">Loading...</p>}
       {!loading && !error && rows.length === 0 && <p className="meta-note">Nothing to show.</p>}
       {pagination && rows.length > 0 && <p className="meta-note">{pagination.total} total</p>}
+      {tab === "transactions" && <div style={{ margin: "8px 0" }}><button type="button" className="small-button" disabled={busyId === "reconcile"} onClick={() => recheckStuck(client, setBusyId, setError, setNotice, setReloadKey)}>Re-check stuck purchases</button></div>}
 
       {tab === "transactions" &&
         rows.map((t) => (
@@ -342,6 +343,21 @@ async function failPendingTransaction(t, client, setBusyId, setError, setNotice,
   try {
     await client.patch("/admin/transactions/" + t.id + "/fail", { reason: reason });
     setNotice("Transaction marked as failed.");
+    setReloadKey(function (k) { return k + 1; });
+  } catch (err) {
+    setError((err.response && err.response.data && err.response.data.error) || "Something went wrong. Please try again.");
+  } finally {
+    setBusyId(null);
+  }
+}
+
+async function recheckStuck(client, setBusyId, setError, setNotice, setReloadKey) {
+  if (!window.confirm("Ask the provider about purchases that are stuck, and finish or refund them?")) return;
+  setBusyId("reconcile"); setError(""); setNotice("");
+  try {
+    var res = await client.post("/admin/reconcile");
+    var s = res.data || {};
+    setNotice("Checked " + s.checked + ": " + s.completed + " completed, " + s.failed + " failed and refunded, " + s.unchanged + " unchanged" + (s.errors ? ", " + s.errors + " errors" : "") + ".");
     setReloadKey(function (k) { return k + 1; });
   } catch (err) {
     setError((err.response && err.response.data && err.response.data.error) || "Something went wrong. Please try again.");
